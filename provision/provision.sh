@@ -70,7 +70,51 @@ add-apt-repository -y ppa:zhangsongcui3371/fastfetch >/dev/null 2>&1 || true
 apt-get update -qq
 apt-get install -y fastfetch >/dev/null || pmsg "  !! fastfetch failed (network or PPA); retry later" "  !! fastfetch 安装失败（网络或 PPA 问题），可稍后重试"
 
-# ---------- 4. 开发相关内核参数 ----------
+# ---------- 4. x86 交叉汇编与运行（nasm + lld + qemu-user）----------
+pmsg "==> installing nasm, lld, qemu-user (build/run x86 binaries on ARM)" \
+     "==> 安装 nasm、lld、qemu-user（在 ARM 上编译/运行 x86 程序）"
+apt-get install -y --no-install-recommends nasm lld qemu-user-static binfmt-support >/dev/null 2>&1 \
+  || pmsg "  !! x86 toolchain install failed; retry later" "  !! x86 工具链安装失败，可稍后重试"
+
+# aarch64 的 binutils 没有 i386 后端，`ld -m elf_i386` 会报 unrecognised emulation。
+# 在 /usr/local/bin 放一个 ld：目标为 x86 时转给 LLVM lld（自带全部后端），其余交回系统 ld。
+# gcc/g++ 直接调用 /usr/bin/ld，不走 PATH，所以原生编译不受影响。
+cat >/usr/local/bin/ld <<'EOF'
+#!/bin/sh
+# 由 MSL provisioning 生成：ARM 主机上的跨架构 ld（x86 目标交给 lld）
+use_lld=0
+for a in "$@"; do
+  case "$a" in
+    -m*elf_i386*|-m*elf_x86_64*|--oformat=elf32-i386|--oformat=elf64-x86-64) use_lld=1 ;;
+  esac
+done
+if [ "$use_lld" = 0 ]; then
+  for a in "$@"; do
+    case "$a" in
+      *.o|*.a|*.so|*.so.*)
+        [ -f "$a" ] || continue
+        m="$(/usr/bin/readelf -h "$a" 2>/dev/null | awk '/Machine:/{print $2" "$3}')"
+        case "$m" in Intel*|AMD*|Advanced*) use_lld=1 ;; esac
+        ;;
+    esac
+  done
+fi
+if [ "$use_lld" = 1 ]; then exec /usr/bin/ld.lld "$@"; fi
+exec /usr/bin/ld "$@"
+EOF
+chmod 755 /usr/local/bin/ld
+
+# qemu-user-static 通过 systemd-binfmt 注册各架构；重启一次服务，确保 i386 生效
+systemctl restart systemd-binfmt 2>/dev/null || true
+if [ -f /proc/sys/fs/binfmt_misc/qemu-i386 ]; then
+  pmsg "  i386 binfmt: enabled (./prog runs through qemu-i386)" \
+       "  i386 binfmt：已启用（./prog 由 qemu-i386 接管）"
+else
+  pmsg "  i386 binfmt: not registered (check qemu-user-static)" \
+       "  i386 binfmt：未注册（检查 qemu-user-static）"
+fi
+
+# ---------- 5. 开发相关内核参数 ----------
 pmsg "==> raising inotify limits (file watchers on virtiofs)" "==> 调大 inotify 上限（virtiofs 下文件监听用）"
 cat >/etc/sysctl.d/99-msl.conf <<'EOF'
 fs.inotify.max_user_watches = 524288
@@ -79,7 +123,7 @@ fs.inotify.max_queued_events = 65536
 EOF
 sysctl -q -p /etc/sysctl.d/99-msl.conf || true
 
-# ---------- 5. shell 环境 ----------
+# ---------- 6. shell 环境 ----------
 pmsg "==> configuring shell environment" "==> 配置 shell 环境"
 cat >/etc/profile.d/99-msl.sh <<'EOF'
 case "${LANG:-}" in C|C.UTF-8|"") export LANG=en_US.UTF-8;; esac
@@ -115,7 +159,7 @@ git config --system --add safe.directory "${MAC_HOME}" 2>/dev/null || true
 # 清理早期版本留下的旧名字
 rm -f /etc/profile.d/99-wsm.sh /etc/update-motd.d/00-wsm
 
-# ---------- 6. 登录横幅（fastfetch 优先） ----------
+# ---------- 7. 登录横幅（fastfetch 优先） ----------
 pmsg "==> configuring login banner" "==> 配置登录横幅"
 cat >/etc/update-motd.d/00-msl <<'EOF'
 #!/bin/bash
@@ -176,7 +220,7 @@ for f in /etc/update-motd.d/10-help-text /etc/update-motd.d/50-motd-news \
 done
 [ -e /etc/default/motd-news ] && sed -i 's/^ENABLED=1/ENABLED=0/' /etc/default/motd-news
 
-# ---------- 7. 校验 ----------
+# ---------- 8. 校验 ----------
 pmsg "==> verification" "==> 校验"
 if grep -rqs NOPASSWD /etc/sudoers.d/; then
   SUDO_STATE="$(t passwordless 免密)"

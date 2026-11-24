@@ -10,7 +10,7 @@
 # 提示语言跟随 locale（LC_ALL / LC_MESSAGES / LANGUAGE / LANG），可用 MSL_LANG=zh|en 强制。
 set -u -o pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 INSTANCE="${MSL_INSTANCE:-${WSM_INSTANCE:-ubuntu}}"
 HOST_HOME="$HOME"

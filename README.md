@@ -163,7 +163,8 @@ sudo chmod -x /etc/update-motd.d/00-msl     # disable the banner entirely
 
 Ubuntu 24.04 LTS (aarch64) plus build-essential / gcc / g++ / cmake / gdb / make, git (+lfs),
 python3 (+pip/venv), curl / wget / jq / ripgrep / fd / bat / tree / unzip / rsync,
-vim / nano / tmux / htop / btop / strace / lsof, net-tools / iputils-ping / dnsutils, fastfetch.
+vim / nano / tmux / htop / btop / strace / lsof, net-tools / iputils-ping / dnsutils, fastfetch,
+nasm / lld / qemu-user-static (build and run x86 binaries).
 Timezone defaults to `Asia/Kuala_Lumpur`, locale to `en_US.UTF-8`.
 
 Want Docker?
@@ -171,6 +172,25 @@ Want Docker?
 ```bash
 msl -c 'sudo apt install -y docker.io && sudo usermod -aG docker $USER'
 ```
+
+### Building x86 assembly
+
+`nasm` is installed, plus everything needed to build and run x86 binaries on an ARM guest:
+
+- `/usr/local/bin/ld` wraps `ld.lld`: when the target is x86 (`-m elf_i386`, or the input is an x86
+  object) the call is handed to lld; everything else falls through to the system `ld`. `gcc` is
+  unaffected because it invokes `/usr/bin/ld` directly.
+- 32-bit binaries run through `qemu-i386` (registered with `binfmt_misc`), so `./prog` just works.
+- 64-bit x86 binaries run through Rosetta, which Lima enables with `--rosetta`.
+
+```bash
+nasm -f elf32 shapes.asm -o shapes.o
+ld -m elf_i386 shapes.o -o shapes     # wrapped -> lld
+./shapes                              # plain run -> qemu-i386
+```
+
+> Run these interactively. Such programs usually call `read(0, buf, 32)`; a piped stdin is consumed
+> in one go, the next read hits EOF and a menu loop spins forever. This is true on native x86 too.
 
 ### A second distro
 
@@ -353,7 +373,8 @@ sudo chmod -x /etc/update-motd.d/00-msl     # 连横幅一起关
 
 Ubuntu 24.04 LTS（aarch64）+ build-essential / gcc / g++ / cmake / gdb / make、git(+lfs)、
 python3(+pip/venv)、curl / wget / jq / ripgrep / fd / bat / tree / unzip / rsync、
-vim / nano / tmux / htop / btop / strace / lsof、net-tools / iputils-ping / dnsutils、fastfetch。
+vim / nano / tmux / htop / btop / strace / lsof、net-tools / iputils-ping / dnsutils、fastfetch、
+nasm / lld / qemu-user-static（编译并运行 x86 程序）。
 时区默认 `Asia/Kuala_Lumpur`，locale `en_US.UTF-8`。
 
 要 Docker：
@@ -361,6 +382,24 @@ vim / nano / tmux / htop / btop / strace / lsof、net-tools / iputils-ping / dns
 ```bash
 msl -c 'sudo apt install -y docker.io && sudo usermod -aG docker $USER'
 ```
+
+### 编译 x86 汇编
+
+系统里装了 `nasm`，以及让 ARM 机器能编译、运行 x86 程序的那套东西：
+
+- `/usr/local/bin/ld` 把 x86 目标转给 `ld.lld`（`-m elf_i386`，或输入是 x86 目标文件时），
+  其余原样交给系统 `ld`；`gcc` 直连 `/usr/bin/ld`，不受影响。
+- 32 位程序由 `qemu-i386` 接管（已注册到 `binfmt_misc`），`./prog` 直接能跑。
+- 64 位 x86 程序跑在 Rosetta 上（Lima 用 `--rosetta` 启用）。
+
+```bash
+nasm -f elf32 shapes.asm -o shapes.o
+ld -m elf_i386 shapes.o -o shapes     # 走 lld
+./shapes                              # 走 qemu-i386
+```
+
+> 这类程序请在终端里交互式运行。它通常用 `read(0, buf, 32)`，管道会一次性把输入读光，
+> 下一次 read 直接 EOF，菜单循环会空转——原生 x86 机器上也一样。
 
 ### 再造一个发行版
 

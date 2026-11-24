@@ -1,0 +1,17 @@
+#!/bin/bash
+# msl 登录横幅：优先 fastfetch，没有就退回简易信息
+if command -v fastfetch >/dev/null 2>&1; then
+  if [ -f "$HOME/.config/fastfetch/config.jsonc" ]; then
+    fastfetch --config "$HOME/.config/fastfetch/config.jsonc" 2>/dev/null && exit 0
+  fi
+  fastfetch 2>/dev/null && exit 0
+fi
+
+. /etc/os-release
+C_G=$'\033[1;32m'; C_C=$'\033[1;36m'; C_D=$'\033[0;37m'; C_N=$'\033[0m'
+printf '\n'
+printf '  %sUbuntu %s%s  %s  %s\n' "$C_G" "$VERSION_ID" "$C_N" "$(uname -m)" "$(hostname)"
+printf '  %s%s   内存 %s   磁盘 %s 可用%s\n' "$C_D" "$(date '+%Y-%m-%d %H:%M')" \
+  "$(free -h | awk '/^Mem:/{print $2}')" "$(df -h / | awk 'NR==2{print $4}')" "$C_N"
+[ -d /Users ] && printf '  %sMac 文件: /Users/%s（双向可写）%s\n' "$C_C" "$(ls /Users | head -1)" "$C_N"
+printf '\n'

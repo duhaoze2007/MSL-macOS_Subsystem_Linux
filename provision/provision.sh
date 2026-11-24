@@ -4,13 +4,26 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-HOST_USER="${SUDO_USER:-}"
-if [ -z "$HOST_USER" ]; then
-  # 没人用 sudo 跑时，退而求其次找一个普通用户
-  HOST_USER="$(getent passwd | awk -F: '$3 >= 500 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1; exit}')"
+# 用法: provision.sh [GUEST_USER] [MAC_HOME]
+#   GUEST_USER  子系统里要配置的账户（默认取 sudo 的调用者）
+#   MAC_HOME    Mac 家目录挂进子系统后的路径（默认 /Users/<挂载的那个用户>）
+GUEST_USER="${1:-${SUDO_USER:-}}"
+if [ -z "$GUEST_USER" ]; then
+  GUEST_USER="$(getent passwd | awk -F: '$3 >= 500 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1; exit}')"
 fi
-[ -n "$HOST_USER" ] || { echo "无法确定宿主用户名，请用 sudo 运行本脚本" >&2; exit 1; }
-HOST_HOME="${HOST_HOME:-/Users/${HOST_USER}}"
+[ -n "$GUEST_USER" ] || { echo "无法确定子系统账户，请用 sudo 运行本脚本" >&2; exit 1; }
+
+GUEST_HOME="$(getent passwd "$GUEST_USER" | cut -d: -f6)"
+GUEST_GROUP="$(id -gn "$GUEST_USER")"
+
+MAC_HOME="${2:-}"
+if [ -z "$MAC_HOME" ]; then
+  if [ -d /Users ]; then
+    MAC_HOME="/Users/$(ls /Users | head -1)"
+  else
+    MAC_HOME="/Users/$GUEST_USER"
+  fi
+fi
 TZ_NAME="${MSL_TZ:-Asia/Kuala_Lumpur}"
 
 # ---------- 1. 时区 / locale ----------
@@ -88,15 +101,13 @@ EOF
 
 # git 系统级默认（用户可在 ~/.gitconfig 覆盖）
 git config --system init.defaultBranch main
-git config --system --add safe.directory "${HOST_HOME}" 2>/dev/null || true
+git config --system --add safe.directory "${MAC_HOME}" 2>/dev/null || true
 
 # 清理早期版本留下的旧名字
 rm -f /etc/profile.d/99-wsm.sh /etc/update-motd.d/00-wsm
 
 # ---------- 6. 登录横幅（fastfetch 优先） ----------
 echo "==> 配置登录横幅"
-GUEST_HOME="$(getent passwd "$HOST_USER" | cut -d: -f6)"
-GUEST_GROUP="$(id -gn "$HOST_USER")"
 cat >/etc/update-motd.d/00-msl <<'EOF'
 #!/bin/bash
 # msl 登录横幅：优先 fastfetch，没有就退回简易信息
@@ -113,13 +124,14 @@ printf '\n'
 printf '  %sUbuntu %s%s  %s  %s\n' "$C_G" "$VERSION_ID" "$C_N" "$(uname -m)" "$(hostname)"
 printf '  %s%s   内存 %s   磁盘 %s 可用%s\n' "$C_D" "$(date '+%Y-%m-%d %H:%M')" \
   "$(free -h | awk '/^Mem:/{print $2}')" "$(df -h / | awk 'NR==2{print $4}')" "$C_N"
-[ -d /Users ] && printf '  %sMac 文件: /Users/%s（双向可写）%s\n' "$C_C" "$(ls /Users | head -1)" "$C_N"
+[ -d /Users ] && printf '  %sMac 文件: __MAC_HOME__（双向可写）%s\n' "$C_C" "$C_N"
 printf '\n'
 EOF
+sed -i "s|__MAC_HOME__|${MAC_HOME}|g" /etc/update-motd.d/00-msl
 chmod +x /etc/update-motd.d/00-msl
 
 # fastfetch 精简配置（写到用户自己的 ~/.config）
-install -d -o "$HOST_USER" -g "$GUEST_GROUP" -m 755 "$GUEST_HOME/.config/fastfetch"
+install -d -o "$GUEST_USER" -g "$GUEST_GROUP" -m 755 "$GUEST_HOME/.config/fastfetch"
 cat >"$GUEST_HOME/.config/fastfetch/config.jsonc" <<'EOF'
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
@@ -145,7 +157,7 @@ cat >"$GUEST_HOME/.config/fastfetch/config.jsonc" <<'EOF'
   ]
 }
 EOF
-chown "$HOST_USER:$GUEST_GROUP" "$GUEST_HOME/.config/fastfetch/config.jsonc"
+chown "$GUEST_USER:$GUEST_GROUP" "$GUEST_HOME/.config/fastfetch/config.jsonc"
 chmod 644 "$GUEST_HOME/.config/fastfetch/config.jsonc"
 
 # 关掉官方那些吵闹的横幅（含联网的 motd-news）
@@ -157,8 +169,8 @@ done
 
 # ---------- 7. 校验 ----------
 echo "==> 校验"
-printf '  sudo(免密) : %s\n' "$(sudo -n -u "$HOST_USER" true 2>/dev/null && echo 可用 || echo '需要密码')"
-printf '  Mac 家目录 : %s\n' "$([ -w "$HOST_HOME" ] && echo 可写 || echo 只读/不可见)"
+printf '  sudo        : %s\n' "$(grep -rqs NOPASSWD /etc/sudoers.d/ && echo '免密' || echo '需要密码')"
+printf '  Mac 家目录 : %s（%s）\n' "$MAC_HOME" "$([ -w "$MAC_HOME" ] && echo 可写 || echo '只读/不可见')"
 printf '  时区       : %s\n' "$(date '+%Z %z')"
 printf '  locale     : %s\n' "$(locale | head -1)"
 echo "==> 初始化完成"

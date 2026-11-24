@@ -40,13 +40,33 @@ cd MSL-macOS_Subsystem_Linux
 ./install.sh
 ```
 
-`install.sh` 会：装 Lima → 创建 4 核 / 8GiB / 48GiB 的 Ubuntu 24.04 实例 → 首次开机 →
-装开发工具链和 fastfetch → 把 `msl` 放进 `~/.local/bin`。全程约 5 分钟（看网速）。
+`install.sh` 装 Lima、把 `msl` 放进 `~/.local/bin`，然后**直接进入首次设置**：
 
-装完开个新终端：
+```
+  MSL —— macOS Subsystem for Linux
+  第一次使用，先为 Ubuntu 子系统创建账户。
+
+  Enter new UNIX username: alice
+  New password:
+  Retype new password:
+```
+
+和 Windows 上第一次启动 Ubuntu 一样——账户是你自己建的，不是脚本替你建的。
+设置完自动创建 4 核 / 8GiB / 48GiB 的实例、装好工具链（约 2 分钟），然后落进你的 shell。
+全程约 5 分钟（看网速）。
+
+之后每次进子系统：
 
 ```bash
 msl
+```
+
+### 一次性脚本化安装
+
+不想交互也可以直接给账户（密码至少 8 位）：
+
+```bash
+MSL_USER=alice MSL_PASSWORD='改我' git clone ... && cd ... && ./install.sh
 ```
 
 ## 用法
@@ -65,25 +85,28 @@ ubuntu -c 'uname -a'         # 别名：ubuntu
 
 | 子命令 | 作用 |
 |---|---|
+| `msl setup` | 首次设置（等价于第一次直接跑 `msl`） |
+| `msl passwd` | 改当前账户密码 |
+| `msl reset` | 删掉实例重新走一遍设置向导 |
 | `msl status` | 运行状态 |
-| `msl info` | 发行版 / 内核 / CPU / 内存 / 磁盘 / IP / 家目录 |
+| `msl info` | 用户 / 发行版 / 内核 / CPU / 内存 / 磁盘 / IP / 家目录 |
 | `msl start` / `stop` / `restart` | 启停，`stop` 后内存立刻还给 Mac |
 | `msl update` | 子系统内 `apt update && apt upgrade` |
 | `msl list` | 所有 Lima 实例 |
-| `msl create` / `delete` | 重建 / 删除（删除需输入 `yes`） |
+| `msl create` / `delete` | 创建 / 删除（删除需输入 `yes`） |
 
-环境变量：`MSL_INSTANCE`（实例名）、`MSL_CPUS` / `MSL_MEM` / `MSL_DISK`、
-`MSL_TEMPLATE`（重建时的配置）、`MSL_TZ`（时区）。
+环境变量：`MSL_INSTANCE`（实例名）、`MSL_USER` / `MSL_PASSWORD`（跳过向导）、
+`MSL_CPUS` / `MSL_MEM` / `MSL_DISK`、`MSL_TEMPLATE`（创建时的模板）、`MSL_TZ`（时区）。
 
 ## 文件在哪
 
 | 位置 | 说明 |
 |---|---|
 | `/Users/<你>` | **Mac 家目录**，同一个路径挂进子系统，双向可写（virtiofs） |
-| `/home/<你>.guest` | 子系统的 Linux 家目录（`~`），`apt`、配置文件都在这 |
+| `/home/<你>` | 子系统的 Linux 家目录（`~`），`apt`、配置文件都在这 |
 | `~/.lima/ubuntu` | 虚拟机磁盘与配置（约 2.6GB 起，上限 48GB，按需增长） |
 
-`sudo` 免密。
+`sudo` 需要密码（和 WSL 一样），第一次 `apt` 会提示输入。
 
 ## 网络
 

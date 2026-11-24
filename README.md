@@ -5,7 +5,7 @@
 名字对应 WSL = **W**indows **S**ubsystem for **L**inux，所以 macOS 上是 **M**acOS **S**ubsystem for **L**inux。
 
 ```
-                            duhaoze@lima-ubuntu
+                                you@lima-ubuntu
          ..;,; .,;,.        -------------------
       .,lool: .ooooo,       OS  Ubuntu 24.04.5 LTS (Noble Numbat) aarch64
      ;oo;:    .coool.       Host  Apple Virtualization Generic Platform (1)
@@ -17,7 +17,7 @@
       lo:;.   :oooo; .      Disk (/)  2.69 GiB / 45.45 GiB (6%) - ext4
        ':ooo; cooooc        Local IP (eth0)  192.168.5.15/24
           '''  ''''         Locale  en_US.UTF-8
-duhaoze@lima-ubuntu:/Users/duhaoze$
+you@lima-ubuntu:/Users/you$
 ```
 
 ## 它是什么

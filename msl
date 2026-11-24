@@ -7,11 +7,38 @@
 #   msl ls -l               直接执行命令（不经 shell）
 #   msl status|info|start|stop|restart|update|setup|reset|passwd|delete
 #
+# 提示语言跟随 locale（LC_ALL / LC_MESSAGES / LANGUAGE / LANG），可用 MSL_LANG=zh|en 强制。
 set -u -o pipefail
+
+VERSION="1.0.0"
 
 INSTANCE="${MSL_INSTANCE:-${WSM_INSTANCE:-ubuntu}}"
 HOST_HOME="$HOME"
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ---------- 语言 ----------
+detect_lang() {
+  local v val
+  if [ -n "${MSL_LANG:-}" ]; then
+    case "$MSL_LANG" in zh*) printf zh ;; *) printf en ;; esac
+    return
+  fi
+  for v in LC_ALL LC_MESSAGES LANGUAGE LANG; do
+    eval "val=\${$v:-}"
+    case "$val" in
+      ""|C|POSIX) continue ;;
+      zh*) printf zh; return ;;
+      *) printf en; return ;;
+    esac
+  done
+  printf en
+}
+LANG_CODE="$(detect_lang)"
+
+# t 英文 中文 → 按当前语言输出
+t() {
+  if [ "$LANG_CODE" = "zh" ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
 
 # ---------- 定位 limactl ----------
 LIMACTL="${MSL_LIMACTL:-${WSM_LIMACTL:-}}"
@@ -21,12 +48,11 @@ if [ -z "$LIMACTL" ]; then
   done
 fi
 if [ -z "$LIMACTL" ]; then
-  printf 'msl: 找不到 limactl，请先执行: brew install lima\n' >&2
+  printf 'msl: %s\n' "$(t "limactl not found; run: brew install lima" "找不到 limactl，请先执行: brew install lima")" >&2
   exit 127
 fi
 
 # ---------- 初始化脚本位置 ----------
-# 优先用户目录下的安装副本；源码仓库里直接跑时退回同目录
 if [ -n "${MSL_PROVISION:-}" ]; then
   PROVISION="$MSL_PROVISION"
 elif [ -f "$HOME/.config/msl/provision.sh" ]; then
@@ -61,15 +87,15 @@ ensure_running() {
   local st; st="$(vm_status)"
   if [ "$st" = "Running" ]; then return 0; fi
   if [ -z "$st" ]; then
-    die "实例「$INSTANCE」不存在，先运行：msl setup"
+    die "$(t "instance '$INSTANCE' does not exist; run: msl setup" "实例「$INSTANCE」不存在，先运行：msl setup")"
   fi
-  say "Ubuntu 子系统未运行，正在启动 …"
+  say "$(t "Ubuntu subsystem is not running, starting …" "Ubuntu 子系统未运行，正在启动 …")"
   local log; log="$(mktemp -t msl-start)"
   if ! "$LIMACTL" start --tty=false "$INSTANCE" >"$log" 2>&1; then
     printf '\n' >&2; tail -n 20 "$log" >&2
-    die "启动失败，完整日志：$log"
+    die "$(t "failed to start; full log: $log" "启动失败，完整日志：$log")"
   fi
-  say "已启动"
+  say "$(t "started" "已启动")"
 }
 
 # 当前目录在 Mac 家目录内就沿用，否则落到子系统的家目录
@@ -94,23 +120,28 @@ ask_setup() {
   local name pass pass2
   printf '\n'
   printf '  \033[1mMSL —— macOS Subsystem for Linux\033[0m\n'
-  printf '  第一次使用，先为 Ubuntu 子系统创建账户。\n\n'
+  printf '  %s\n\n' "$(t "First run: create an account for your Ubuntu subsystem." \
+                         "第一次使用，先为 Ubuntu 子系统创建账户。")"
   while :; do
-    printf '  Enter new UNIX username: '
-    read -r name || die "已取消"
+    printf '  %s' "$(t "Enter new UNIX username: " "请输入新的 UNIX 用户名: ")"
+    read -r name || die "$(t "cancelled" "已取消")"
     if valid_user "$name"; then break; fi
-    printf '  \033[31m用户名要 3-32 位、小写字母开头，只能用小写字母/数字/-/_\033[0m\n'
+    printf '  \033[31m%s\033[0m\n' "$(t "3-32 chars, lowercase letter first, only a-z 0-9 - _" \
+                                          "用户名要 3-32 位、小写字母开头，只能用小写字母/数字/-/_")"
   done
   while :; do
-    printf '  New password: '
-    read -r -s pass || die "已取消"; printf '\n'
+    printf '  %s' "$(t "New password: " "新密码: ")"
+    read -r -s pass || die "$(t "cancelled" "已取消")"; printf '\n'
     if [ ${#pass} -lt 8 ] && [ "${MSL_ALLOW_WEAK:-0}" != "1" ]; then
-      printf '  \033[31m密码至少 8 位（想用短密码可以设 MSL_ALLOW_WEAK=1）\033[0m\n'; continue
+      printf '  \033[31m%s\033[0m\n' "$(t "at least 8 characters (set MSL_ALLOW_WEAK=1 to bypass)" \
+                                            "密码至少 8 位（想用短密码可以设 MSL_ALLOW_WEAK=1）")"
+      continue
     fi
-    printf '  Retype new password: '
-    read -r -s pass2 || die "已取消"; printf '\n'
+    printf '  %s' "$(t "Retype new password: " "确认新密码: ")"
+    read -r -s pass2 || die "$(t "cancelled" "已取消")"; printf '\n'
     if [ "$pass" != "$pass2" ]; then
-      printf '  \033[31m两次输入不一致，重来\033[0m\n'; continue
+      printf '  \033[31m%s\033[0m\n' "$(t "passwords do not match, try again" "两次输入不一致，重来")"
+      continue
     fi
     break
   done
@@ -120,6 +151,51 @@ ask_setup() {
 
 # ---------- 帮助 ----------
 usage() {
+  if [ "$LANG_CODE" = "zh" ]; then usage_zh; else usage_en; fi
+}
+
+usage_en() {
+  cat <<'EOF'
+msl —— MSL: macOS Subsystem for Linux
+(WSL = Windows Subsystem for Linux; aliases: wsm / ubuntu)
+
+Usage:
+  msl                          Enter the Ubuntu shell (first run starts setup)
+  msl -c 'cmd'                 Run a command through bash (pipes, redirects)
+  msl cmd args...              Run a command directly, no shell
+  msl -u USER [-c 'cmd']       Run as another user (root = root shell)
+  msl -C DIR ...               Run in a specific directory
+
+Setup:
+  setup       First-time setup: create account (username + password) and provision
+  passwd      Change the current account's password
+  reset       Delete the instance and run setup again (guest data is lost)
+
+Daily:
+  status      Show state
+  info        Show user / distro / kernel / CPU / memory / disk / IP / home
+  start       Start
+  stop        Stop (returns memory to macOS)
+  restart     Restart
+  update      apt update && apt upgrade inside the guest
+  create      Create the instance (errors if it exists)
+  delete      Delete the instance (asks for confirmation)
+  list        List all Lima instances
+
+Environment:
+  MSL_INSTANCE            Instance name, default ubuntu
+  MSL_USER/MSL_PASSWORD   Account for non-interactive setup (skips the wizard)
+  MSL_LANG                zh or en (defaults to your locale)
+  MSL_CPUS/MSL_MEM/MSL_DISK   Resources, default 4 / 8GiB / 48GiB
+  MSL_TEMPLATE            Image template, default template:ubuntu-24.04
+  MSL_TZ                  Timezone, default Asia/Kuala_Lumpur
+
+Your Mac home is mounted at the same path inside the guest (/Users/you), read-write.
+sudo requires a password, same as WSL.
+EOF
+}
+
+usage_zh() {
   cat <<'EOF'
 msl —— MSL: macOS Subsystem for Linux
 （呼应 WSL = Windows Subsystem for Linux；别名 wsm / ubuntu）
@@ -132,13 +208,13 @@ msl —— MSL: macOS Subsystem for Linux
   msl -C 目录 ...              在子系统的指定目录里执行
 
 设置:
-  setup       首次设置：创建账户（用户名 + 密码）并初始化子系统，等价于第一次跑 msl
+  setup       首次设置：创建账户（用户名 + 密码）并初始化子系统
   passwd      改当前账户的密码
-  reset       删掉实例重新走一遍设置向导（子系统数据会丢，Mac 文件不受影响）
+  reset       删掉实例重新走一遍设置向导（子系统数据会丢）
 
 日常:
   status      查看运行状态
-  info        查看配置、IP、挂载、资源占用
+  info        查看用户 / 发行版 / 内核 / CPU / 内存 / 磁盘 / IP / 家目录
   start       启动
   stop        停止（释放内存）
   restart     重启
@@ -148,56 +224,86 @@ msl —— MSL: macOS Subsystem for Linux
   list        列出所有 Lima 实例
 
 环境变量:
-  MSL_INSTANCE        实例名，默认 ubuntu（可起多个发行版并存）
-  MSL_USER/MSL_PASSWORD  非交互创建时直接指定账户（跳过向导）
+  MSL_INSTANCE            实例名，默认 ubuntu
+  MSL_USER/MSL_PASSWORD   非交互创建时直接指定账户（跳过向导）
+  MSL_LANG                zh 或 en（默认跟随 locale）
   MSL_CPUS/MSL_MEM/MSL_DISK  资源配置，默认 4 / 8GiB / 48GiB
-  MSL_TEMPLATE        创建时的模板，默认 template:ubuntu-24.04
-  MSL_TZ              时区，默认 Asia/Kuala_Lumpur
+  MSL_TEMPLATE            镜像模板，默认 template:ubuntu-24.04
+  MSL_TZ                  时区，默认 Asia/Kuala_Lumpur
 
-提示: Mac 家目录在子系统里是同一个路径（/Users/你的用户名），双向可写。
-      sudo 需要密码，和 WSL 里一样。
+Mac 家目录在子系统里是同一个路径（/Users/你的用户名），双向可写。
+sudo 需要密码，和 WSL 里一样。
 EOF
 }
 
 # ---------- 子命令 ----------
 cmd_status() {
   local st; st="$(vm_status)"
-  [ -z "$st" ] && { printf '状态: 未创建（运行 msl setup）\n'; exit 1; }
-  printf '实例: %s\n状态: %s\n' "$INSTANCE" "$st"
+  [ -z "$st" ] && { printf '%s\n' "$(t "state: not created (run msl setup)" "状态: 未创建（运行 msl setup）")"; exit 1; }
+  printf '%s: %s\n%s: %s\n' "$(t "instance" "实例")" "$INSTANCE" "$(t "state" "状态")" "$st"
 }
 
 cmd_info() {
   ensure_running
-  "$LIMACTL" shell --workdir "$HOST_HOME" "$INSTANCE" -- /bin/bash -lc '
-    printf "主机名      : %s\n" "$(hostname)"
-    printf "用户        : %s（uid %s）\n" "$(id -un)" "$(id -u)"
-    printf "发行版      : %s\n" "$(. /etc/os-release; echo "$PRETTY_NAME")"
-    printf "内核        : %s\n" "$(uname -r)"
-    printf "CPU / 内存  : %s 核 / %s（已用 %s）\n" "$(nproc)" \
-      "$(free -h | awk "/^Mem:/{print \$2}")" "$(free -h | awk "/^Mem:/{print \$3}")"
-    printf "磁盘        : %s 总 / %s 可用\n" "$(df -h / | awk "NR==2{print \$2}")" "$(df -h / | awk "NR==2{print \$4}")"
-    printf "IP          : %s\n" "$(hostname -I | awk "{print \$1}")"
-    printf "Linux 家目录: %s\n" "$HOME"
-    printf "Mac 文件    : /Users/%s（同一个路径，双向可写）\n" "$(ls /Users | head -1)"
-    printf "sudo        : %s\n" "$(sudo -n true 2>/dev/null && echo "免密" || echo "需要密码")"
-  ' 2>/dev/null || die "读取实例信息失败"
+  local raw
+  raw="$("$LIMACTL" shell --workdir "$HOST_HOME" "$INSTANCE" -- /bin/bash -lc '
+    echo "user=$(id -un) (uid $(id -u))"
+    echo "host=$(hostname)"
+    echo "distro=$(. /etc/os-release; echo "$PRETTY_NAME")"
+    echo "kernel=$(uname -r)"
+    echo "cpu=$(nproc)|$(free -h | awk "/^Mem:/{print \$2}")|$(free -h | awk "/^Mem:/{print \$3}")"
+    echo "disk=$(df -h / | awk "NR==2{print \$2}")|$(df -h / | awk "NR==2{print \$4}")"
+    echo "ip=$(hostname -I | awk "{print \$1}")"
+    echo "home=$HOME"
+    echo "mac=/Users/$(ls /Users | head -1)"
+    if sudo -n true 2>/dev/null; then echo "sudo=passwordless"; else echo "sudo=required"; fi
+  ' 2>/dev/null)" || die "$(t "failed to read instance info" "读取实例信息失败")"
+
+  local k v label
+  while IFS='=' read -r k v; do
+    case "$k" in
+      user)   label="$(t "user" "用户")" ;;
+      host)   label="$(t "hostname" "主机名")" ;;
+      distro) label="$(t "distro" "发行版")" ;;
+      kernel) label="$(t "kernel" "内核")" ;;
+      cpu)
+        label="$(t "cpu / mem" "CPU / 内存")"
+        v="$(printf '%s' "$v" | cut -d'|' -f1) / $(printf '%s' "$v" | cut -d'|' -f2) $(t "(used $(printf '%s' "$v" | cut -d'|' -f3))" "（已用 $(printf '%s' "$v" | cut -d'|' -f3)）")"
+        ;;
+      disk)
+        label="$(t "disk" "磁盘")"
+        v="$(printf '%s' "$v" | cut -d'|' -f1) $(t total 总) / $(printf '%s' "$v" | cut -d'|' -f2) $(t free 可用)"
+        ;;
+      ip)     label="$(t "ip" "IP")" ;;
+      home)   label="$(t "linux home" "Linux 家目录")" ;;
+      mac)    label="$(t "mac files" "Mac 文件")" ;;
+      sudo)   label="$(t "sudo" "sudo")" ;;
+      *) continue ;;
+    esac
+    case "$k:$v" in
+      mac:*)  v="$v $(t "(same path, read-write)" "（同一个路径，双向可写）")" ;;
+      sudo:passwordless) v="$(t "passwordless" "免密")" ;;
+      sudo:required)     v="$(t "password required" "需要密码")" ;;
+    esac
+    printf '%-14s %s\n' "$label" "$v"
+  done <<< "$raw"
 }
 
 cmd_start() { ensure_running; }
 cmd_stop() {
   if [ "$(vm_status)" = "Running" ]; then
-    say "正在停止 $INSTANCE …"; "$LIMACTL" stop "$INSTANCE" && say "已停止"
+    say "$(t "stopping $INSTANCE …" "正在停止 $INSTANCE …")"; "$LIMACTL" stop "$INSTANCE" && say "$(t "stopped" "已停止")"
   else
-    printf '当前未运行。\n'
+    printf '%s\n' "$(t "not running." "当前未运行。")"
   fi
 }
 cmd_restart() {
-  say "重启 $INSTANCE …"; "$LIMACTL" restart --tty=false "$INSTANCE"
+  say "$(t "restarting $INSTANCE …" "重启 $INSTANCE …")"; "$LIMACTL" restart --tty=false "$INSTANCE"
 }
 cmd_update() {
   ensure_running
   "$LIMACTL" shell --workdir "$HOST_HOME" "$INSTANCE" -- /bin/bash -lc \
-    'sudo apt-get update && sudo apt-get -y upgrade && echo "== 子系统已是最新 =="'
+    'sudo apt-get update && sudo apt-get -y upgrade && echo "== up to date =="'
 }
 cmd_passwd() {
   ensure_running
@@ -205,75 +311,88 @@ cmd_passwd() {
 }
 
 cmd_create() {
-  [ -n "$(vm_status)" ] && die "实例「$INSTANCE」已存在；要重来请用 msl reset"
+  [ -n "$(vm_status)" ] && die "$(t "instance '$INSTANCE' already exists; use msl reset to start over" \
+                                   "实例「$INSTANCE」已存在；要重来请用 msl reset")"
 
   if [ -z "$MSL_USER" ] || [ -z "$MSL_PASSWORD" ]; then
     if [ -t 0 ] && [ -t 1 ]; then
       ask_setup
     else
-      die "创建需要账户信息：交互运行 msl setup，或设置 MSL_USER / MSL_PASSWORD"
+      die "$(t "account required: run msl setup interactively, or set MSL_USER / MSL_PASSWORD" \
+              "创建需要账户信息：交互运行 msl setup，或设置 MSL_USER / MSL_PASSWORD")"
     fi
   fi
-  [ -n "$PROVISION" ] && [ -f "$PROVISION" ] || die "找不到 provision.sh（可用 MSL_PROVISION 指定路径）"
+  [ -n "$PROVISION" ] && [ -f "$PROVISION" ] || die "$(t "provision.sh not found (set MSL_PROVISION)" \
+                                                      "找不到 provision.sh（可用 MSL_PROVISION 指定路径）")"
 
-  say "创建 $INSTANCE：${VM_CPUS} 核 / ${VM_MEM}GiB 内存 / ${VM_DISK}GiB 磁盘，用户 $MSL_USER"
+  say "$(t "creating $INSTANCE: ${VM_CPUS} CPU / ${VM_MEM}GiB RAM / ${VM_DISK}GiB disk, user $MSL_USER" \
+          "创建 $INSTANCE：${VM_CPUS} 核 / ${VM_MEM}GiB 内存 / ${VM_DISK}GiB 磁盘，用户 $MSL_USER")"
   "$LIMACTL" create --name="$INSTANCE" \
     --cpus="$VM_CPUS" --memory="$VM_MEM" --disk="$VM_DISK" \
     --mount-writable --containerd=none --rosetta --tty=false \
     --set ".user.name = \"$MSL_USER\"" \
     --set ".user.home = \"/home/$MSL_USER\"" \
-    "$VM_TEMPLATE" || die "创建失败"
+    "$VM_TEMPLATE" || die "$(t "create failed" "创建失败")"
 
-  say "首次启动 …"
+  say "$(t "first boot …" "首次启动 …")"
   if ! "$LIMACTL" start --tty=false --timeout=10m "$INSTANCE" >/tmp/msl-boot.log 2>&1; then
     tail -n 20 /tmp/msl-boot.log >&2
-    die "启动失败"
+    die "$(t "boot failed" "启动失败")"
   fi
 
   # 初始化时仍用免密 sudo，装完再收紧
-  say "初始化子系统：apt、开发工具、fastfetch（约 2 分钟）"
-  if ! "$LIMACTL" shell --tty=false "$INSTANCE" -- sudo bash -s -- "$MSL_USER" "$HOST_HOME" < "$PROVISION"; then
-    die "初始化失败；可以手动重跑：msl -c 'sudo bash ~/.config/msl/provision.sh $MSL_USER $HOST_HOME'"
+  say "$(t "provisioning: apt, toolchain, fastfetch (~2 min)" \
+          "初始化子系统：apt、开发工具、fastfetch（约 2 分钟）")"
+  if ! "$LIMACTL" shell --tty=false "$INSTANCE" -- sudo bash -s -- "$MSL_USER" "$HOST_HOME" "$LANG_CODE" < "$PROVISION"; then
+    die "$(t "provisioning failed; retry with: msl -c 'sudo bash ~/.config/msl/provision.sh'" \
+            "初始化失败；可以手动重跑：msl -c 'sudo bash ~/.config/msl/provision.sh'")"
   fi
 
-  say "设置 $MSL_USER 的登录密码 …"
+  say "$(t "setting password for $MSL_USER …" "设置 $MSL_USER 的登录密码 …")"
   if ! printf '%s' "$MSL_PASSWORD" | "$LIMACTL" shell --tty=false "$INSTANCE" -- \
         sudo bash -c 'IFS= read -r pw; printf "%s:%s\n" "$1" "$pw" | chpasswd' _ "$MSL_USER"; then
-    die "设置密码失败"
+    die "$(t "failed to set password" "设置密码失败")"
   fi
 
   # 和 WSL 一样：sudo 要密码（删掉 cloud-init 写的 NOPASSWD 规则）
-  say "按 WSL 的习惯把 sudo 改成需要密码 …"
+  say "$(t "making sudo require a password, like WSL …" "按 WSL 的习惯把 sudo 改成需要密码 …")"
   "$LIMACTL" shell --tty=false "$INSTANCE" -- sudo bash -c \
     'usermod -aG sudo "$1"; rm -f /etc/sudoers.d/90-cloud-init-users' \
-    _ "$MSL_USER" || die "设置 sudo 规则失败"
+    _ "$MSL_USER" || die "$(t "failed to configure sudo" "设置 sudo 规则失败")"
 
   # Lima 复用 SSH ControlMaster：改组后旧会话里的组还是旧的，必须重连再验证
   "$LIMACTL" shell --reconnect --tty=false "$INSTANCE" -- /bin/bash -c '
-    id -nG | tr " " "\n" | grep -qx sudo || { echo "用户不在 sudo 组" >&2; exit 1; }
-    if sudo -n true 2>/dev/null; then echo "仍然可以免密 sudo" >&2; exit 1; fi
-  ' 2>/dev/null || die "sudo 权限没有按预期收紧"
+    id -nG | tr " " "\n" | grep -qx sudo || { echo "user not in sudo group" >&2; exit 1; }
+    if sudo -n true 2>/dev/null; then echo "still passwordless" >&2; exit 1; fi
+  ' 2>/dev/null || die "$(t "sudo was not tightened as expected" "sudo 权限没有按预期收紧")"
 
   printf '\n'
-  say "完成。账户 $MSL_USER 已就绪，从现在起直接敲 msl 进入子系统。"
+  say "$(t "done. account $MSL_USER is ready — just run: msl" \
+          "完成。账户 $MSL_USER 已就绪，从现在起直接敲 msl 进入子系统。")"
 }
 
 cmd_reset() {
   if [ -n "$(vm_status)" ]; then
-    printf '将删除实例 %s 并重新设置（子系统里的数据会丢，Mac 文件不受影响）。\n输入 yes 确认: ' "$INSTANCE"
+    printf '%s' "$(t "This will delete instance $INSTANCE and set it up again (guest data is lost, Mac files are safe).
+Type yes to confirm: " \
+                     "将删除实例 $INSTANCE 并重新设置（子系统里的数据会丢，Mac 文件不受影响）。
+输入 yes 确认: ")"
     read -r ans
-    [ "$ans" = "yes" ] || { printf '已取消。\n'; exit 1; }
-    "$LIMACTL" delete -f "$INSTANCE" || die "删除失败"
+    [ "$ans" = "yes" ] || { printf '%s\n' "$(t "cancelled." "已取消。")"; exit 1; }
+    "$LIMACTL" delete -f "$INSTANCE" || die "$(t "delete failed" "删除失败")"
   fi
   cmd_create
 }
 
 cmd_delete() {
-  [ -n "$(vm_status)" ] || die "实例「$INSTANCE」不存在"
-  printf '将删除实例 %s，其中所有 Linux 数据都会丢失（Mac 家目录不受影响）。\n输入 yes 确认: ' "$INSTANCE"
+  [ -n "$(vm_status)" ] || die "$(t "instance '$INSTANCE' does not exist" "实例「$INSTANCE」不存在")"
+  printf '%s' "$(t "This will delete instance $INSTANCE and all Linux data in it (your Mac home is untouched).
+Type yes to confirm: " \
+                   "将删除实例 $INSTANCE，其中所有 Linux 数据都会丢失（Mac 家目录不受影响）。
+输入 yes 确认: ")"
   read -r ans
-  [ "$ans" = "yes" ] || { printf '已取消。\n'; exit 1; }
-  "$LIMACTL" delete -f "$INSTANCE" && printf '已删除。\n'
+  [ "$ans" = "yes" ] || { printf '%s\n' "$(t "cancelled." "已取消。")"; exit 1; }
+  "$LIMACTL" delete -f "$INSTANCE" && printf '%s\n' "$(t "deleted." "已删除。")"
 }
 cmd_list() { "$LIMACTL" list; }
 
@@ -290,12 +409,12 @@ while [ $# -gt 0 ]; do
   fi
   case "$1" in
     -h|--help)      usage; exit 0 ;;
-    -V|--version)   printf 'msl 1.1 (limactl %s)\n' "$("$LIMACTL" --version 2>/dev/null | awk '{print $3}')"; exit 0 ;;
-    -c|--command)   [ $# -ge 2 ] || die "-c 需要参数"; CMD_STRING="$2"; shift 2 ;;
-    -u|--user)      [ $# -ge 2 ] || die "-u 需要参数"; RUN_USER="$2"; shift 2 ;;
-    -C|--cd)        [ $# -ge 2 ] || die "-C 需要参数"; WORKDIR="$2"; shift 2 ;;
+    -V|--version)   printf 'msl %s (limactl %s)\n' "$VERSION" "$("$LIMACTL" --version 2>/dev/null | awk '{print $3}')"; exit 0 ;;
+    -c|--command)   [ $# -ge 2 ] || die "$(t "-c requires an argument" "-c 需要参数")"; CMD_STRING="$2"; shift 2 ;;
+    -u|--user)      [ $# -ge 2 ] || die "$(t "-u requires an argument" "-u 需要参数")"; RUN_USER="$2"; shift 2 ;;
+    -C|--cd)        [ $# -ge 2 ] || die "$(t "-C requires an argument" "-C 需要参数")"; WORKDIR="$2"; shift 2 ;;
     --)             shift; POSITIONAL+=("$@"); break ;;
-    -*)             die "未知选项: $1（msl --help 查看用法）" ;;
+    -*)             die "$(t "unknown option: $1 (see msl --help)" "未知选项: $1（msl --help 查看用法）")" ;;
     *)              POSITIONAL+=("$1"); shift ;;
   esac
 done
@@ -330,7 +449,7 @@ if [ -z "$(vm_status)" ]; then
   if [ ${#POSITIONAL[@]} -eq 0 ] && [ -z "$CMD_STRING" ] && [ -t 0 ] && [ -t 1 ]; then
     cmd_create
   else
-    die "还没有子系统，先运行：msl setup"
+    die "$(t "no subsystem yet; run: msl setup" "还没有子系统，先运行：msl setup")"
   fi
 fi
 
@@ -363,7 +482,7 @@ if [ ${#POSITIONAL[@]} -gt 0 ]; then
 fi
 
 # 交互 shell
-[ -t 0 ] || die "非交互终端：请用 msl -c '命令' 或 'msl 命令 参数'"
+[ -t 0 ] || die "$(t "not a terminal: use msl -c 'cmd' or msl cmd args" "非交互终端：请用 msl -c '命令' 或 'msl 命令 参数'")"
 if [ -n "$RUN_USER" ]; then
   if [ "$RUN_USER" = "root" ]; then
     exec "$LIMACTL" shell --workdir "$wd" "$INSTANCE" -- sudo -H -i

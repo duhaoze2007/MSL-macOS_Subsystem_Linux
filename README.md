@@ -39,6 +39,16 @@ performance is close to bare metal. `msl` is a thin CLI that gives the whole thi
 - Idle footprint: ~120 MB of macOS RAM (8 GiB is the cap, allocated lazily)
 - Disk: ~2.6 GB in use, grows on demand up to 48 GB
 
+### Language
+
+Every message follows the locale (`LC_ALL` → `LC_MESSAGES` → `LANGUAGE` → `LANG`):
+a `zh*` locale gets Chinese, anything else gets English. Override with `MSL_LANG`:
+
+```bash
+MSL_LANG=en msl --help      # force English
+MSL_LANG=zh msl info        # force Chinese
+```
+
 ### Requirements
 
 - Apple Silicon Mac (M1/M2/M3/M4), macOS 13 or newer
@@ -58,16 +68,15 @@ first-time setup** — exactly like the first launch of Ubuntu on Windows:
 
 ```
   MSL —— macOS Subsystem for Linux
-  第一次使用，先为 Ubuntu 子系统创建账户。
+  First run: create an account for your Ubuntu subsystem.
 
   Enter new UNIX username: alice
   New password:
   Retype new password:
 ```
 
-> The wizard's status line is currently Chinese-only (`第一次使用，先为 Ubuntu 子系统创建账户。`
-> means "first run — create an account for your Ubuntu subsystem"). The prompts themselves and
-> everything you type are plain ASCII.
+Language follows your locale: a `zh*` locale gets the Chinese version of every message, anything
+else gets English. See [Language](#language) to force one.
 
 The account is yours: the VM is created with that username and password. Provisioning
 (apt, toolchain, fastfetch) takes about 2 minutes, then you land in your shell. Total ~5 minutes
@@ -113,7 +122,7 @@ in the same directory.
 | `msl create` / `delete` | Create / delete (deletion asks for `yes`) |
 
 Environment variables: `MSL_INSTANCE` (instance name), `MSL_USER` / `MSL_PASSWORD` (skip the
-wizard), `MSL_CPUS` / `MSL_MEM` / `MSL_DISK`, `MSL_TEMPLATE` (image template), `MSL_TZ` (timezone).
+wizard), `MSL_LANG` (zh/en), `MSL_CPUS` / `MSL_MEM` / `MSL_DISK`, `MSL_TEMPLATE` (image template), `MSL_TZ` (timezone).
 
 ### Where things live
 
@@ -225,6 +234,16 @@ MIT
 - 冷启动约 8 秒（`msl stop` 之后再 `msl`）
 - 空闲时占 macOS 约 120MB 内存（8GiB 是上限，懒分配）
 - 磁盘已用约 2.6GB，按需增长到 48GB 上限
+
+### 语言
+
+所有提示跟随 locale（`LC_ALL` → `LC_MESSAGES` → `LANGUAGE` → `LANG`）：
+`zh*` 输出中文，其他一律英文。可以用 `MSL_LANG` 强制：
+
+```bash
+MSL_LANG=zh msl --help      # 强制中文
+MSL_LANG=en msl info        # 强制英文
+```
 
 ### 要求
 

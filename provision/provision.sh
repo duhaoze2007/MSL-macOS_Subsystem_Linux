@@ -11,7 +11,16 @@ GUEST_USER="${1:-${SUDO_USER:-}}"
 if [ -z "$GUEST_USER" ]; then
   GUEST_USER="$(getent passwd | awk -F: '$3 >= 500 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1; exit}')"
 fi
-[ -n "$GUEST_USER" ] || { echo "无法确定子系统账户，请用 sudo 运行本脚本" >&2; exit 1; }
+[ -n "$GUEST_USER" ] || { echo "cannot determine guest user; run this script with sudo" >&2; exit 1; }
+
+# 提示语言：第三个参数 zh/en，缺省跟随环境
+LANG_ARG="${3:-}"
+case "$LANG_ARG" in
+  zh|en) LANG_CODE="$LANG_ARG" ;;
+  *) case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in zh*) LANG_CODE=zh ;; *) LANG_CODE=en ;; esac ;;
+esac
+t() { if [ "$LANG_CODE" = "zh" ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
+pmsg() { printf '%s\n' "$(t "$1" "$2")"; }
 
 GUEST_HOME="$(getent passwd "$GUEST_USER" | cut -d: -f6)"
 GUEST_GROUP="$(id -gn "$GUEST_USER")"
@@ -27,7 +36,7 @@ fi
 TZ_NAME="${MSL_TZ:-Asia/Kuala_Lumpur}"
 
 # ---------- 1. 时区 / locale ----------
-echo "==> 时区 / 编码"
+pmsg "==> timezone / locale" "==> 时区 / 编码"
 ln -sf "/usr/share/zoneinfo/${TZ_NAME}" /etc/localtime
 echo "${TZ_NAME}" > /etc/timezone
 apt-get install -y --no-install-recommends locales tzdata >/dev/null
@@ -36,9 +45,9 @@ locale-gen >/dev/null
 update-locale LANG=en_US.UTF-8 >/dev/null
 
 # ---------- 2. 系统更新 ----------
-echo "==> 更新 apt 索引"
+pmsg "==> updating apt index" "==> 更新 apt 索引"
 apt-get update -qq
-echo "==> 安装基础开发工具"
+pmsg "==> installing base development tools" "==> 安装基础开发工具"
 apt-get install -y --no-install-recommends \
   build-essential pkg-config autoconf automake libtool cmake gdb \
   git git-lfs curl wget ca-certificates gnupg lsb-release \
@@ -49,20 +58,20 @@ apt-get install -y --no-install-recommends \
   bash-completion command-not-found \
   ripgrep fd-find bat software-properties-common \
   >/dev/null
-echo "==> 系统已安装包数量: $(dpkg -l | grep -c '^ii')"
+pmsg "==> installed packages: $(dpkg -l | grep -c '^ii')" "==> 系统已安装包数量: $(dpkg -l | grep -c '^ii')"
 
 # Ubuntu 里 fd/bat 的可执行文件名带后缀，补两个短名字
 [ -e /usr/local/bin/fd  ] || ln -s /usr/bin/fdfind /usr/local/bin/fd
 [ -e /usr/local/bin/bat ] || ln -s /usr/bin/batcat /usr/local/bin/bat
 
 # ---------- 3. fastfetch（PPA，24.04 官方源里没有）----------
-echo "==> 安装 fastfetch"
+pmsg "==> installing fastfetch" "==> 安装 fastfetch"
 add-apt-repository -y ppa:zhangsongcui3371/fastfetch >/dev/null 2>&1 || true
 apt-get update -qq
-apt-get install -y fastfetch >/dev/null || echo "  !! fastfetch 安装失败（网络或 PPA 问题），可稍后重试"
+apt-get install -y fastfetch >/dev/null || pmsg "  !! fastfetch failed (network or PPA); retry later" "  !! fastfetch 安装失败（网络或 PPA 问题），可稍后重试"
 
 # ---------- 4. 开发相关内核参数 ----------
-echo "==> 调大 inotify 上限（virtiofs 下文件监听用）"
+pmsg "==> raising inotify limits (file watchers on virtiofs)" "==> 调大 inotify 上限（virtiofs 下文件监听用）"
 cat >/etc/sysctl.d/99-msl.conf <<'EOF'
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 1024
@@ -71,7 +80,7 @@ EOF
 sysctl -q -p /etc/sysctl.d/99-msl.conf || true
 
 # ---------- 5. shell 环境 ----------
-echo "==> 配置 shell 环境"
+pmsg "==> configuring shell environment" "==> 配置 shell 环境"
 cat >/etc/profile.d/99-msl.sh <<'EOF'
 case "${LANG:-}" in C|C.UTF-8|"") export LANG=en_US.UTF-8;; esac
 # 由 msl 生成：Ubuntu 子系统的交互环境
@@ -107,7 +116,7 @@ git config --system --add safe.directory "${MAC_HOME}" 2>/dev/null || true
 rm -f /etc/profile.d/99-wsm.sh /etc/update-motd.d/00-wsm
 
 # ---------- 6. 登录横幅（fastfetch 优先） ----------
-echo "==> 配置登录横幅"
+pmsg "==> configuring login banner" "==> 配置登录横幅"
 cat >/etc/update-motd.d/00-msl <<'EOF'
 #!/bin/bash
 # msl 登录横幅：优先 fastfetch，没有就退回简易信息
@@ -168,9 +177,15 @@ done
 [ -e /etc/default/motd-news ] && sed -i 's/^ENABLED=1/ENABLED=0/' /etc/default/motd-news
 
 # ---------- 7. 校验 ----------
-echo "==> 校验"
-printf '  sudo        : %s\n' "$(grep -rqs NOPASSWD /etc/sudoers.d/ && echo '免密' || echo '需要密码')"
-printf '  Mac 家目录 : %s（%s）\n' "$MAC_HOME" "$([ -w "$MAC_HOME" ] && echo 可写 || echo '只读/不可见')"
-printf '  时区       : %s\n' "$(date '+%Z %z')"
-printf '  locale     : %s\n' "$(locale | head -1)"
-echo "==> 初始化完成"
+pmsg "==> verification" "==> 校验"
+if grep -rqs NOPASSWD /etc/sudoers.d/; then
+  SUDO_STATE="$(t passwordless 免密)"
+else
+  SUDO_STATE="$(t "password required" 需要密码)"
+fi
+if [ -w "$MAC_HOME" ]; then MAC_STATE="$(t writable 可写)"; else MAC_STATE="$(t "read-only / not visible" "只读/不可见")"; fi
+printf '  %s: %s\n' "$(t sudo sudo)" "$SUDO_STATE"
+printf '  %s: %s %s\n' "$(t "mac home" "Mac 家目录")" "$MAC_HOME" "$MAC_STATE"
+printf '  %s: %s\n' "$(t timezone 时区)" "$(date '+%Z %z')"
+printf '  %s: %s\n' "$(t locale locale)" "$(locale | head -1)"
+pmsg "==> provisioning complete" "==> 初始化完成"

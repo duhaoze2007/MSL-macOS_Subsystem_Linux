@@ -120,9 +120,18 @@ in the same directory.
 | `msl update` | `apt update && apt upgrade` inside the guest |
 | `msl list` | All Lima instances |
 | `msl create` / `delete` | Create / delete (deletion asks for `yes`) |
+| `msl help [cmd]` | Full help, or help for a single command |
 
 Environment variables: `MSL_INSTANCE` (instance name), `MSL_USER` / `MSL_PASSWORD` (skip the
 wizard), `MSL_LANG` (zh/en), `MSL_CPUS` / `MSL_MEM` / `MSL_DISK`, `MSL_TEMPLATE` (image template), `MSL_TZ` (timezone).
+
+### Help
+
+```bash
+msl --help            # command list, options, examples
+msl help stop         # help for one command
+msl stop --help       # same thing
+```
 
 ### Where things live
 
@@ -331,9 +340,18 @@ ubuntu -c 'uname -a'         # 别名：ubuntu
 | `msl update` | 子系统内 `apt update && apt upgrade` |
 | `msl list` | 所有 Lima 实例 |
 | `msl create` / `delete` | 创建 / 删除（删除需输入 `yes`） |
+| `msl help [命令]` | 完整帮助，或单条命令的帮助 |
 
 环境变量：`MSL_INSTANCE`（实例名）、`MSL_USER` / `MSL_PASSWORD`（跳过向导）、
 `MSL_CPUS` / `MSL_MEM` / `MSL_DISK`、`MSL_TEMPLATE`（镜像模板）、`MSL_TZ`（时区）。
+
+### 帮助
+
+```bash
+msl --help            # 完整命令列表、选项和示例
+msl help stop         # 单条命令的帮助
+msl stop --help       # 同上
+```
 
 ### 文件在哪
 

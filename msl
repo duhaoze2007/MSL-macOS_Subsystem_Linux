@@ -10,7 +10,7 @@
 # 提示语言跟随 locale（LC_ALL / LC_MESSAGES / LANGUAGE / LANG），可用 MSL_LANG=zh|en 强制。
 set -u -o pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 INSTANCE="${MSL_INSTANCE:-${WSM_INSTANCE:-ubuntu}}"
 HOST_HOME="$HOME"
@@ -87,7 +87,7 @@ ensure_running() {
   local st; st="$(vm_status)"
   if [ "$st" = "Running" ]; then return 0; fi
   if [ -z "$st" ]; then
-    die "$(t "instance '$INSTANCE' does not exist; run: msl setup" "实例「$INSTANCE」不存在，先运行：msl setup")"
+    die "$(t "instance '$INSTANCE' does not exist; run: msl setup" "实例「${INSTANCE}」不存在，先运行：msl setup")"
   fi
   say "$(t "Ubuntu subsystem is not running, starting …" "Ubuntu 子系统未运行，正在启动 …")"
   local log; log="$(mktemp -t msl-start)"
@@ -190,6 +190,12 @@ Environment:
   MSL_TEMPLATE            Image template, default template:ubuntu-24.04
   MSL_TZ                  Timezone, default Asia/Kuala_Lumpur
 
+Examples:
+  msl                      enter the shell
+  msl -c 'apt update'      run a command through bash
+  msl -u root              root shell
+  msl help stop            help for a single command
+
 Your Mac home is mounted at the same path inside the guest (/Users/you), read-write.
 sudo requires a password, same as WSL.
 EOF
@@ -231,9 +237,63 @@ msl —— MSL: macOS Subsystem for Linux
   MSL_TEMPLATE            镜像模板，默认 template:ubuntu-24.04
   MSL_TZ                  时区，默认 Asia/Kuala_Lumpur
 
+示例:
+  msl                      进入 shell
+  msl -c 'apt update'      用 bash 执行一条命令
+  msl -u root              进 root shell
+  msl help stop            查看单条命令的帮助
+
 Mac 家目录在子系统里是同一个路径（/Users/你的用户名），双向可写。
 sudo 需要密码，和 WSL 里一样。
 EOF
+}
+
+# ---------- 单命令帮助 ----------
+help_one() {
+  local c="$1"
+  if [ "$LANG_CODE" = "zh" ]; then
+    case "$c" in
+      status)  printf 'msl status\n  查看子系统是否在运行。\n' ;;
+      info)    printf 'msl info\n  显示用户、发行版、内核、CPU/内存、磁盘、IP、家目录和 sudo 模式。\n' ;;
+      start)   printf 'msl start\n  启动子系统；已经在运行就什么都不做。\n' ;;
+      stop)    printf 'msl stop\n  停止子系统，把内存还给 macOS（下次 msl 会自动重新启动）。\n' ;;
+      restart) printf 'msl restart\n  重启子系统。\n' ;;
+      update)  printf 'msl update\n  在子系统里执行 apt update && apt upgrade（需要 sudo 密码）。\n' ;;
+      setup)   printf 'msl setup\n  首次设置：创建 UNIX 账户并初始化实例，等价于第一次直接运行 msl。\n' ;;
+      create)  printf 'msl create\n  创建实例。已存在会报错；要重来请用 msl reset。\n' ;;
+      reset)   printf 'msl reset\n  删除实例并重新走一遍设置向导。子系统数据会丢，Mac 文件不受影响。\n' ;;
+      passwd)  printf 'msl passwd\n  修改子系统里当前账户的密码。\n' ;;
+      delete)  printf 'msl delete\n  确认后删除实例，其中的 Linux 数据会丢失。\n' ;;
+      list)    printf 'msl list\n  列出所有 Lima 实例。\n' ;;
+      help)    printf 'msl help [命令]\n  显示完整帮助，或某一条命令的帮助。\n' ;;
+      *) return 1 ;;
+    esac
+  else
+    case "$c" in
+      status)  printf 'msl status\n  Show whether the subsystem is running.\n' ;;
+      info)    printf 'msl info\n  Show user, distro, kernel, CPU/memory, disk, IP, home and sudo mode.\n' ;;
+      start)   printf 'msl start\n  Start the subsystem. Nothing happens if it is already running.\n' ;;
+      stop)    printf 'msl stop\n  Stop the subsystem and hand its memory back to macOS (msl starts it again on demand).\n' ;;
+      restart) printf 'msl restart\n  Restart the subsystem.\n' ;;
+      update)  printf 'msl update\n  Run apt update && apt upgrade inside the guest (asks for the sudo password).\n' ;;
+      setup)   printf 'msl setup\n  First-time setup: create your UNIX account and provision the instance.\n' ;;
+      create)  printf 'msl create\n  Create the instance. Fails if it exists; use msl reset to start over.\n' ;;
+      reset)   printf 'msl reset\n  Delete the instance and run setup again. Guest data is lost, Mac files are safe.\n' ;;
+      passwd)  printf 'msl passwd\n  Change the current account password inside the guest.\n' ;;
+      delete)  printf 'msl delete\n  Delete the instance after confirmation. Linux data inside it is lost.\n' ;;
+      list)    printf 'msl list\n  List all Lima instances.\n' ;;
+      help)    printf 'msl help [command]\n  Show the full help, or the help for a single command.\n' ;;
+      *) return 1 ;;
+    esac
+  fi
+}
+
+cmd_help() {
+  local topic="${1:-}"
+  case "$topic" in
+    "") usage ;;
+    *)  help_one "$topic" || die "$(t "no such command: $topic (see msl --help)" "没有这个命令：${topic}（试试 msl --help）")" ;;
+  esac
 }
 
 # ---------- 子命令 ----------
@@ -312,7 +372,7 @@ cmd_passwd() {
 
 cmd_create() {
   [ -n "$(vm_status)" ] && die "$(t "instance '$INSTANCE' already exists; use msl reset to start over" \
-                                   "实例「$INSTANCE」已存在；要重来请用 msl reset")"
+                                   "实例「${INSTANCE}」已存在；要重来请用 msl reset")"
 
   if [ -z "$MSL_USER" ] || [ -z "$MSL_PASSWORD" ]; then
     if [ -t 0 ] && [ -t 1 ]; then
@@ -326,7 +386,7 @@ cmd_create() {
                                                       "找不到 provision.sh（可用 MSL_PROVISION 指定路径）")"
 
   say "$(t "creating $INSTANCE: ${VM_CPUS} CPU / ${VM_MEM}GiB RAM / ${VM_DISK}GiB disk, user $MSL_USER" \
-          "创建 $INSTANCE：${VM_CPUS} 核 / ${VM_MEM}GiB 内存 / ${VM_DISK}GiB 磁盘，用户 $MSL_USER")"
+          "创建 ${INSTANCE}：${VM_CPUS} 核 / ${VM_MEM}GiB 内存 / ${VM_DISK}GiB 磁盘，用户 $MSL_USER")"
   "$LIMACTL" create --name="$INSTANCE" \
     --cpus="$VM_CPUS" --memory="$VM_MEM" --disk="$VM_DISK" \
     --mount-writable --containerd=none --rosetta --tty=false \
@@ -385,10 +445,10 @@ Type yes to confirm: " \
 }
 
 cmd_delete() {
-  [ -n "$(vm_status)" ] || die "$(t "instance '$INSTANCE' does not exist" "实例「$INSTANCE」不存在")"
+  [ -n "$(vm_status)" ] || die "$(t "instance '$INSTANCE' does not exist" "实例「${INSTANCE}」不存在")"
   printf '%s' "$(t "This will delete instance $INSTANCE and all Linux data in it (your Mac home is untouched).
 Type yes to confirm: " \
-                   "将删除实例 $INSTANCE，其中所有 Linux 数据都会丢失（Mac 家目录不受影响）。
+                   "将删除实例 ${INSTANCE}，其中所有 Linux 数据都会丢失（Mac 家目录不受影响）。
 输入 yes 确认: ")"
   read -r ans
   [ "$ans" = "yes" ] || { printf '%s\n' "$(t "cancelled." "已取消。")"; exit 1; }
@@ -421,9 +481,16 @@ done
 
 # 子命令（仅在第一个位置参数且没有 -c/-u 时生效）
 if [ -z "$CMD_STRING" ] && [ -z "$RUN_USER" ] && [ ${#POSITIONAL[@]} -gt 0 ]; then
-  case "${POSITIONAL[0]}" in
+  SUB="${POSITIONAL[0]}"
+  case "$SUB" in
     status|info|start|stop|restart|update|create|delete|list|help|setup|reset|passwd)
-      case "${POSITIONAL[0]}" in
+      # msl <命令> --help / -h → 单命令帮助
+      if [ ${#POSITIONAL[@]} -gt 1 ]; then
+        case "${POSITIONAL[1]}" in
+          -h|--help) cmd_help "$SUB"; exit 0 ;;
+        esac
+      fi
+      case "$SUB" in
         status)  cmd_status ;;
         info)    cmd_info ;;
         start)   cmd_start ;;
@@ -436,7 +503,7 @@ if [ -z "$CMD_STRING" ] && [ -z "$RUN_USER" ] && [ ${#POSITIONAL[@]} -gt 0 ]; th
         passwd)  cmd_passwd ;;
         delete)  cmd_delete ;;
         list)    cmd_list ;;
-        help)    usage ;;
+        help)    cmd_help "${POSITIONAL[1]:-}" ;;
       esac
       exit $?
       ;;

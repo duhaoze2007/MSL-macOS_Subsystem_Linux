@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Copyright (c) 2026 Du Haoze TP155460
 # msl —— MSL: macOS Subsystem for Linux
 # 像 WSL 一样在 macOS 上使用 Ubuntu 子系统（Lima + Virtualization.framework）
 #
@@ -11,7 +10,7 @@
 # 提示语言跟随 locale（LC_ALL / LC_MESSAGES / LANGUAGE / LANG），可用 MSL_LANG=zh|en 强制。
 set -u -o pipefail
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 
 INSTANCE="${MSL_INSTANCE:-${WSM_INSTANCE:-ubuntu}}"
 HOST_HOME="$HOME"

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Copyright (c) 2026 Du Haoze TP155460
 # MSL 一键安装：装 Lima、放好 msl 命令，然后直接进入首次设置（输入用户名和密码）
 set -euo pipefail
 
@@ -39,6 +38,8 @@ case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) warn "$BIN_DIR 不在 PATH 里，装完把它加进去" ;;
 esac
+
+printf '\n  MSL — macOS Subsystem for Linux\n  Copyright (c) 2026 Du Haoze TP155460 · MIT License\n\n'
 
 # 3. 首次设置：没建过实例就进向导，建过就直接进 shell
 info "接下来会创建子系统账户（像 Windows 上第一次启动 Ubuntu 一样）"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Du Haoze TP155460
 # msl 子系统初始化脚本（在 Ubuntu 里以 root 运行）
 # 重跑安全：msl -c "sudo bash ~/.config/msl/provision.sh"
 set -euo pipefail
@@ -81,6 +82,7 @@ apt-get install -y --no-install-recommends nasm lld qemu-user-static binfmt-supp
 # gcc/g++ 直接调用 /usr/bin/ld，不走 PATH，所以原生编译不受影响。
 cat >/usr/local/bin/ld <<'EOF'
 #!/bin/sh
+# Copyright (c) 2026 Du Haoze TP155460
 # 由 MSL provisioning 生成：ARM 主机上的跨架构 ld（x86 目标交给 lld）
 use_lld=0
 for a in "$@"; do
@@ -126,6 +128,7 @@ sysctl -q -p /etc/sysctl.d/99-msl.conf || true
 # ---------- 6. shell 环境 ----------
 pmsg "==> configuring shell environment" "==> 配置 shell 环境"
 cat >/etc/profile.d/99-msl.sh <<'EOF'
+# Copyright (c) 2026 Du Haoze TP155460
 case "${LANG:-}" in C|C.UTF-8|"") export LANG=en_US.UTF-8;; esac
 # 由 msl 生成：Ubuntu 子系统的交互环境
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
@@ -163,6 +166,7 @@ rm -f /etc/profile.d/99-wsm.sh /etc/update-motd.d/00-wsm
 pmsg "==> configuring login banner" "==> 配置登录横幅"
 cat >/etc/update-motd.d/00-msl <<'EOF'
 #!/bin/bash
+# Copyright (c) 2026 Du Haoze TP155460
 # msl 登录横幅：优先 fastfetch，没有就退回简易信息
 if command -v fastfetch >/dev/null 2>&1; then
   if [ -f "$HOME/.config/fastfetch/config.jsonc" ]; then
@@ -186,6 +190,7 @@ chmod +x /etc/update-motd.d/00-msl
 # fastfetch 精简配置（写到用户自己的 ~/.config）
 install -d -o "$GUEST_USER" -g "$GUEST_GROUP" -m 755 "$GUEST_HOME/.config/fastfetch"
 cat >"$GUEST_HOME/.config/fastfetch/config.jsonc" <<'EOF'
+// Copyright (c) 2026 Du Haoze TP155460
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {

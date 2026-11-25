@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Du Haoze TP155460
 # MSL 一键安装：装 Lima、放好 msl 命令，然后直接进入首次设置（输入用户名和密码）
 set -euo pipefail
 

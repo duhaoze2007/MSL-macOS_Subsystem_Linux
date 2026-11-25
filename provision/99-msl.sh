@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Du Haoze TP155460
 case "${LANG:-}" in C|C.UTF-8|"") export LANG=en_US.UTF-8;; esac
 # 由 msl 生成：Ubuntu 子系统的交互环境
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"

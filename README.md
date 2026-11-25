@@ -248,7 +248,7 @@ msl -c 'sudo bash ~/.config/msl/provision.sh'
 
 ### License
 
-MIT
+MIT — Copyright (c) 2026 Du Haoze TP155460
 
 ---
 
@@ -466,4 +466,8 @@ msl -c 'sudo bash ~/.config/msl/provision.sh'
 
 ### License
 
-MIT
+MIT — Copyright (c) 2026 Du Haoze TP155460
+
+---
+
+Copyright (c) 2026 Du Haoze TP155460 · MIT License
